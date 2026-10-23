@@ -1,0 +1,27 @@
+name = "context"
+kind = "md"
+output = "."
+include_file_names = true
+roots = ["."]
+
+[includes]
+patterns = []
+
+[excludes]
+patterns = [
+    "**/.git",
+    "**/.gitignore",
+    "**/.env",
+    "**/*.dll",
+    "**/*.exe",
+    "**/*.so",
+    "**/*.dylib",
+    "**/*.o",
+    "**/*.obj",
+    "**/*.a",
+    "**/*.lib",
+    "**/bin",
+    "**/obj",
+    "**/context.toml",
+    "**/.zig-cache",
+]
