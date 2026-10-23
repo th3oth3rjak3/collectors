@@ -45,10 +45,19 @@ pub const Region = struct {
 test "Region handles allocation and cleanups gracefully" {
     const allocator = std.testing.allocator;
 
-    var reg = try Region.init(allocator, 10);
-    // Look how much cleaner this reads now! No need to pass the allocator here anymore.
+    // Need to allocate at least 16 bytes for it to be aligned.
+    var reg = try Region.init(allocator, 24);
     defer reg.deinit();
 
-    const offset1 = reg.allocate(4);
-    try expectEqual(@as(?usize, 0), offset1);
+    const offset = reg.allocate(4);
+    try expectEqual(@as(?usize, 0), offset);
+}
+
+test "Region won't allocate when misaligned" {
+    const allocator = std.testing.allocator;
+    var region = try Region.init(allocator, 14); // less than 16 byte alignment.
+    defer region.deinit();
+
+    const offset = region.allocate(4);
+    try expectEqual(null, offset); // Couldn't allocate 16 bytes in a 14 byte capacity.
 }
