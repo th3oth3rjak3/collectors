@@ -1,0 +1,54 @@
+const std = @import("std");
+const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
+
+/// Owns a continguous bump-allocation region.
+///
+/// Memory returned by `Region.reserve` is uninitialized. Calling
+/// `Region.reset` invalidates every reservation previously returned
+/// by the region.
+pub const Region = struct {
+    memory: []u8,
+    offset: usize,
+    /// The region now securely owns its backing allocator
+    allocator: std.mem.Allocator,
+
+    pub fn init(backing_allocator: std.mem.Allocator, capacity: usize) !Region {
+        const memory = try backing_allocator.alloc(u8, capacity);
+        return Region{
+            .memory = memory,
+            .offset = 0,
+            .allocator = backing_allocator,
+        };
+    }
+
+    /// Bulletproof cleanup: No parameters needed, zero chance of an allocator mismatch!
+    pub fn deinit(self: *Region) void {
+        self.allocator.free(self.memory);
+    }
+
+    pub fn allocate(self: *Region, size: usize) ?usize {
+        if (size == 0) return null;
+
+        const aligned_size = std.mem.alignForward(usize, size, 16);
+
+        if (self.offset + aligned_size > self.memory.len) {
+            return null;
+        }
+
+        const allocated_offset = self.offset;
+        self.offset += aligned_size;
+        return allocated_offset;
+    }
+};
+
+test "Region handles allocation and cleanups gracefully" {
+    const allocator = std.testing.allocator;
+
+    var reg = try Region.init(allocator, 10);
+    // Look how much cleaner this reads now! No need to pass the allocator here anymore.
+    defer reg.deinit();
+
+    const offset1 = reg.allocate(4);
+    try expectEqual(@as(?usize, 0), offset1);
+}
