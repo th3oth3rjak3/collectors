@@ -1,6 +1,5 @@
 const std = @import("std");
 
-pub const header = @import("common/header.zig");
 pub const region = @import("common/region.zig");
 
 comptime {
