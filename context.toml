@@ -24,4 +24,9 @@ patterns = [
     "**/obj",
     "**/context.toml",
     "**/.zig-cache",
+    "**/zig-pkg",
+    "**/zig-out",
+    "**/region*",
+    "**/tools",
+    "**/build*",
 ]
