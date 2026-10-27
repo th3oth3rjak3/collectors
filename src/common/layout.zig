@@ -268,7 +268,10 @@ test "rejects malformed descriptor fields" {
         .gc_data = null,
         .element_type = .reference,
     };
-    try std.testing.expectError(error.InvalidAlignment, bad_alignment.validate());
+    try std.testing.expectError(
+        error.InvalidAlignment,
+        bad_alignment.validate(),
+    );
 
     const bad_ptr_bytes = LayoutDescriptor{
         .size = @sizeOf(usize),
@@ -277,7 +280,10 @@ test "rejects malformed descriptor fields" {
         .gc_data = &bitmap,
         .element_type = .reference,
     };
-    try std.testing.expectError(error.InvalidPtrBytes, bad_ptr_bytes.validate());
+    try std.testing.expectError(
+        error.InvalidPtrBytes,
+        bad_ptr_bytes.validate(),
+    );
 
     const missing_bitmap = LayoutDescriptor{
         .size = @sizeOf(usize),
@@ -286,7 +292,10 @@ test "rejects malformed descriptor fields" {
         .gc_data = null,
         .element_type = .reference,
     };
-    try std.testing.expectError(error.MissingBitmap, missing_bitmap.validate());
+    try std.testing.expectError(
+        error.MissingBitmap,
+        missing_bitmap.validate(),
+    );
 }
 
 test "bitmap visits pointer words and skips scalar words" {
@@ -384,7 +393,11 @@ test "repeated elements use aligned starts without padding the descriptor size" 
         .gc_data = &bitmap,
         .element_type = .reference,
     };
-    const stride = comptime std.mem.alignForward(usize, payload_size, alignment);
+    const stride = comptime std.mem.alignForward(
+        usize,
+        payload_size,
+        alignment,
+    );
     try std.testing.expectEqual(stride, layout.elementStride());
 
     var a: u8 = 1;
@@ -548,7 +561,10 @@ test "getAlignment produces a zig alignment" {
         .element_type = .reference,
     };
 
-    try std.testing.expectEqual(std.mem.Alignment.@"8", descriptor.getAlignment());
+    try std.testing.expectEqual(
+        std.mem.Alignment.@"8",
+        descriptor.getAlignment(),
+    );
 }
 
 test "rejects element stride that overflows usize" {

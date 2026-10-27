@@ -57,7 +57,10 @@ pub const Region = struct {
     ///   would be greater than or equal to `std.math.maxInt(isize)`.
     /// * `error.AllocationFailure` if the backing allocator cannot allocate
     ///   the required memory.
-    pub fn init(backing_allocator: std.mem.Allocator, requested_capacity: usize) RegionError!Region {
+    pub fn init(
+        backing_allocator: std.mem.Allocator,
+        requested_capacity: usize,
+    ) RegionError!Region {
         if (requested_capacity == 0) {
             return RegionError.ZeroCapacity;
         }
@@ -129,7 +132,11 @@ pub const Region = struct {
     /// would cause integer overflow.
     /// * `RegionError.OutOfSpace` if the aligned offset plus the `size` exceeds `capacity()`
     /// * `RegionError.InvalidAlignment` if the alignment requested is not a power of two or zero.
-    pub fn reserve(self: *Region, size: usize, alignment: usize) RegionError!usize {
+    pub fn reserve(
+        self: *Region,
+        size: usize,
+        alignment: usize,
+    ) RegionError!usize {
         if (size == 0) {
             return RegionError.ZeroSizedReservation;
         }

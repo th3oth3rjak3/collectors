@@ -18,7 +18,7 @@ pub const AllocationError = error{
 
 /// Helps to distinguish between a single element allocation
 /// and an array containing a single object.
-const AllocationKind = enum {
+pub const AllocationKind = enum {
     single,
     array,
 };
@@ -50,17 +50,26 @@ pub const Allocation = struct {
     /// Initialize an `Allocation` for a given `quantity` of elements.
     ///
     /// ### Safety
-    /// * When the `descriptor.element_type` is scalar, this method uses `descriptor.elementStride`
-    ///   to ensure enough space exists between elements for padding and alignment purposes. The caller
-    ///   must ensure that they place the actual objects at the appropriate locations after allocation
-    ///   occurs. When `deinit` is called later, any scalar values stored in the array are deleted.
-    /// * When the `descriptor.element_type` is reference and `kind` is single this method reserves enough
-    ///   space for the entire object and a header.
-    /// * When the `descriptor.element_type` is reference and `kind` is array, this method reserves
-    ///   enough space for `quantity * @sizeOf(Ref)` objects plus a header. For collections, the caller
-    ///   is responsible to place the values at the given reference locations from the start of the payload.
-    pub fn init(allocator: std.mem.Allocator, descriptor: *const LayoutDescriptor, quantity: usize, kind: AllocationKind) AllocationError!Allocation {
-        if (quantity == 0) {
+    /// * When the `descriptor.element_type` is scalar, this method uses
+    ///   `descriptor.elementStride` to ensure enough space exists between
+    ///   elements for padding and alignment purposes. The caller must ensure
+    ///   that they place the actual objects at the appropriate locations
+    ///   after allocation occurs. When `deinit` is called later, any
+    ///   scalar values stored in the array are deleted.
+    /// * When the `descriptor.element_type` is reference and `kind` is single
+    ///   this method reserves enough space for the entire object and a header.
+    /// * When the `descriptor.element_type` is reference and `kind` is array,
+    ///   this method reserves enough space for `quantity * @sizeOf(Ref)`
+    ///   objects plus a header. For collections, the caller is responsible
+    ///   to place the values at the given reference locations from the
+    ///   start of the payload.
+    pub fn init(
+        allocator: std.mem.Allocator,
+        descriptor: *const LayoutDescriptor,
+        quantity: usize,
+        kind: AllocationKind,
+    ) AllocationError!Allocation {
+        if (quantity == 0 and kind == .single) {
             return AllocationError.ZeroSizedAllocation;
         }
 
@@ -75,12 +84,16 @@ pub const Allocation = struct {
         return allocate_collection(allocator, descriptor, quantity);
     }
 
-    fn allocate_single_element(allocator: std.mem.Allocator, descriptor: *const LayoutDescriptor) AllocationError!Allocation {
-        // Reserve enough space for the header. On 64-bit systems, Ref will be 8 bytes.
-        // If the alignment is less than 8 bytes for the descriptor, we still need 8 byte alignment
-        // for the header.
-        // When the alignment is greater than 8 bytes, we still need to reserve enough space for the
-        // header, but we should reserve excess in order to make sure the payload is aligned
+    fn allocate_single_element(
+        allocator: std.mem.Allocator,
+        descriptor: *const LayoutDescriptor,
+    ) AllocationError!Allocation {
+        // Reserve enough space for the header. On 64-bit systems, Ref will be
+        // 8 bytes. If the alignment is less than 8 bytes for the descriptor,
+        // we still need 8 byte alignment for the header.
+        // When the alignment is greater than 8 bytes, we still need to
+        // reserve enough space for the header, but we should reserve
+        // excess in order to make sure the payload is aligned
         // correctly. This will likely result in wasted padding space.
         const pointer_width = @sizeOf(Ref);
         const header_space: usize = @max(pointer_width, descriptor.alignment);
@@ -105,7 +118,11 @@ pub const Allocation = struct {
 
         const allocated_memory_addr = @intFromPtr(allocated_memory.ptr);
 
-        const aligned_addr = std.mem.alignForward(usize, allocated_memory_addr, header_space);
+        const aligned_addr = std.mem.alignForward(
+            usize,
+            allocated_memory_addr,
+            header_space,
+        );
         const payload_start = aligned_addr + header_space;
         const header_start = payload_start - pointer_width;
 
@@ -128,13 +145,18 @@ pub const Allocation = struct {
         };
     }
 
-    fn allocate_collection(allocator: std.mem.Allocator, descriptor: *const LayoutDescriptor, quantity: usize) AllocationError!Allocation {
-        // Reserve enough space for the header. On 64-bit systems, Ref will be 8 bytes.
-        // If the alignment is less than 8 bytes for the descriptor, we still need 8 byte alignment
-        // for the header.
-        // When the alignment is greater than 8 bytes, we still need to reserve enough space for the
-        // header, but we should reserve excess in order to make sure the payload is aligned
-        // correctly. This will likely result in wasted padding space.
+    fn allocate_collection(
+        allocator: std.mem.Allocator,
+        descriptor: *const LayoutDescriptor,
+        quantity: usize,
+    ) AllocationError!Allocation {
+        // Reserve enough space for the header. On 64-bit systems, Ref will
+        // be 8 bytes. If the alignment is less than 8 bytes for the
+        // descriptor, we still need 8 byte alignment for the header.
+        // When the alignment is greater than 8 bytes, we still need to
+        // reserve enough space for the header, but we should reserve excess
+        // in order to make sure the payload is aligned correctly.
+        // This will likely result in wasted padding space.
         const pointer_width = @sizeOf(Ref);
         const header_space: usize = @max(pointer_width, descriptor.alignment);
 
@@ -151,9 +173,16 @@ pub const Allocation = struct {
         };
 
         // Calculate the space required if scalar or Ref type
-        const element_size = if (descriptor.element_type == .scalar) descriptor.elementStride() else @sizeOf(Ref);
+        const element_size = if (descriptor.element_type == .scalar)
+            descriptor.elementStride()
+        else
+            @sizeOf(Ref);
 
-        const total_space = try allocationSize(header_space, element_size, quantity);
+        const total_space = try allocationSize(
+            header_space,
+            element_size,
+            quantity,
+        );
 
         const allocated_memory = allocator.alloc(u8, total_space) catch {
             return AllocationError.OutOfMemory;
@@ -161,7 +190,11 @@ pub const Allocation = struct {
 
         const allocated_memory_addr = @intFromPtr(allocated_memory.ptr);
 
-        const aligned_addr = std.mem.alignForward(usize, allocated_memory_addr, header_space);
+        const aligned_addr = std.mem.alignForward(
+            usize,
+            allocated_memory_addr,
+            header_space,
+        );
         const payload_start = aligned_addr + header_space;
         const header_start = payload_start - pointer_width;
 
@@ -261,8 +294,14 @@ test "single allocation has sufficient space and aligned payload" {
     try std.testing.expectEqual(allocation.header, header_slot.*);
 
     // The header describes this object's layout.
-    try std.testing.expectEqual(descriptor.size, allocation.header.descriptor.size);
-    try std.testing.expectEqual(descriptor.alignment, allocation.header.descriptor.alignment);
+    try std.testing.expectEqual(
+        descriptor.size,
+        allocation.header.descriptor.size,
+    );
+    try std.testing.expectEqual(
+        descriptor.alignment,
+        allocation.header.descriptor.alignment,
+    );
     try std.testing.expect(!allocation.header.is_marked);
 }
 
@@ -377,8 +416,14 @@ test "scalar array reserves space for every element and aligns payload" {
 
     try std.testing.expectEqual(quantity, allocation.quantity);
     try std.testing.expectEqual(AllocationKind.array, allocation.kind);
-    try std.testing.expectEqual(descriptor.size, allocation.header.descriptor.size);
-    try std.testing.expectEqual(descriptor.alignment, allocation.header.descriptor.alignment);
+    try std.testing.expectEqual(
+        descriptor.size,
+        allocation.header.descriptor.size,
+    );
+    try std.testing.expectEqual(
+        descriptor.alignment,
+        allocation.header.descriptor.alignment,
+    );
 
     try std.testing.expectEqual(
         @as(usize, 0),
@@ -461,7 +506,7 @@ test "array of one element remains an array allocation" {
     try std.testing.expectEqual(@as(usize, 1), allocation.quantity);
 }
 
-test "array allocation rejects zero quantity" {
+test "array allocation accepts zero quantity" {
     const descriptor = LayoutDescriptor{
         .size = 8,
         .alignment = 8,
@@ -470,15 +515,15 @@ test "array allocation rejects zero quantity" {
         .element_type = .scalar,
     };
 
-    try std.testing.expectError(
-        AllocationError.ZeroSizedAllocation,
-        Allocation.init(
-            std.testing.allocator,
-            &descriptor,
-            0,
-            .array,
-        ),
+    var allocation = try Allocation.init(
+        std.testing.allocator,
+        &descriptor,
+        0,
+        .array,
     );
+
+    defer allocation.deinit(std.testing.allocator);
+    try std.testing.expectEqual(0, allocation.quantity);
 }
 
 test "array allocation frees header when payload allocation fails" {
