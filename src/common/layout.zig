@@ -10,6 +10,12 @@ const REF_ALIGNMENT: usize = @alignOf(Ref);
 /// marking it; this module does not decide whether a pointer is managed.
 pub const Ref = ?*anyopaque;
 
+/// The type of element that a layout refers to.
+pub const ElementType = enum(u8) {
+    scalar,
+    reference,
+};
+
 /// Describes an object type's memory layout for garbage collection.
 ///
 /// `size` and `alignment` describe the object's payload. `ptr_bytes`
@@ -29,6 +35,10 @@ pub const Ref = ?*anyopaque;
 /// The descriptor and bitmap are shared, immutable metadata that may be
 /// emitted by a compiler or constructed by a runtime.
 pub const LayoutDescriptor = extern struct {
+    /// Differentiates between scalar values and reference
+    /// types.
+    element_type: ElementType,
+
     /// Payload bytes occupied by one element.
     size: usize,
 
@@ -48,6 +58,12 @@ pub const LayoutDescriptor = extern struct {
     /// pointer-free type.
     gc_data: ?[*]const u8,
 
+    /// Returns the descriptor's alignment as a standard zig `std.mem.Alignment`.
+    /// Assumes that the descriptor has been validated.
+    pub fn getAlignment(self: *const LayoutDescriptor) std.mem.Alignment {
+        return std.mem.Alignment.fromByteUnits(self.alignment);
+    }
+
     /// Validate fields whose values are directly checkable. This cannot prove
     /// that `gc_data` is readable or that a compiler/runtime emitted truthful
     /// layout metadata; those are descriptor-producer obligations.
@@ -66,6 +82,12 @@ pub const LayoutDescriptor = extern struct {
             if (self.gc_data != null) return error.UnexpectedBitmap;
         } else if (self.gc_data == null) {
             return error.MissingBitmap;
+        }
+
+        const remainder = self.size % self.alignment;
+        const padding = self.alignment - remainder;
+        if (self.size > std.math.maxInt(usize) - padding) {
+            return error.SizeOverflow;
         }
     }
 
@@ -88,14 +110,10 @@ pub const LayoutDescriptor = extern struct {
     /// and 8-byte alignment has a 16-byte element stride when placed in an array.
     /// This is derived, not stored in every descriptor. Requires a validated
     /// descriptor.
-    pub fn elementStride(self: *const LayoutDescriptor) LayoutError!usize {
+    pub fn elementStride(self: *const LayoutDescriptor) usize {
         const remainder = self.size % self.alignment;
         if (remainder == 0) return self.size;
-
         const padding = self.alignment - remainder;
-        if (self.size > std.math.maxInt(usize) - padding) {
-            return error.SizeOverflow;
-        }
         return self.size + padding;
     }
 
@@ -128,7 +146,7 @@ pub const LayoutDescriptor = extern struct {
 
         // For a single payload, the logical extent may be `size` even if size is
         // not alignment-rounded. For repeated elements, storage uses aligned stride.
-        const stride = try self.elementStride();
+        const stride = self.elementStride();
         const element_count = if (allocation_size == self.size)
             1
         else blk: {
@@ -202,11 +220,12 @@ test "pointer-free layouts need no bitmap" {
         .alignment = 8,
         .ptr_bytes = 0,
         .gc_data = null,
+        .element_type = .reference,
     };
 
     try layout.validate();
     try std.testing.expectEqual(@as(usize, 0), layout.bitmapByteCount());
-    try std.testing.expectEqual(@as(usize, 16), try layout.elementStride());
+    try std.testing.expectEqual(@as(usize, 16), layout.elementStride());
 }
 
 test "payload size need not be a multiple of alignment" {
@@ -216,6 +235,7 @@ test "payload size need not be a multiple of alignment" {
         .alignment = @alignOf(usize),
         .ptr_bytes = @sizeOf(usize),
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
 
     try layout.validate();
@@ -225,7 +245,7 @@ test "payload size need not be a multiple of alignment" {
     );
     try std.testing.expectEqual(
         std.mem.alignForward(usize, layout.size, layout.alignment),
-        try layout.elementStride(),
+        layout.elementStride(),
     );
 }
 
@@ -237,6 +257,7 @@ test "rejects malformed descriptor fields" {
         .alignment = 8,
         .ptr_bytes = 0,
         .gc_data = null,
+        .element_type = .reference,
     };
     try std.testing.expectError(error.InvalidSize, zero_size.validate());
 
@@ -245,6 +266,7 @@ test "rejects malformed descriptor fields" {
         .alignment = 3,
         .ptr_bytes = 0,
         .gc_data = null,
+        .element_type = .reference,
     };
     try std.testing.expectError(error.InvalidAlignment, bad_alignment.validate());
 
@@ -253,6 +275,7 @@ test "rejects malformed descriptor fields" {
         .alignment = @alignOf(usize),
         .ptr_bytes = @sizeOf(usize) + 1,
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
     try std.testing.expectError(error.InvalidPtrBytes, bad_ptr_bytes.validate());
 
@@ -261,6 +284,7 @@ test "rejects malformed descriptor fields" {
         .alignment = @alignOf(usize),
         .ptr_bytes = @sizeOf(usize),
         .gc_data = null,
+        .element_type = .reference,
     };
     try std.testing.expectError(error.MissingBitmap, missing_bitmap.validate());
 }
@@ -279,6 +303,7 @@ test "bitmap visits pointer words and skips scalar words" {
         .alignment = @alignOf(Mixed),
         .ptr_bytes = 3 * @sizeOf(usize),
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
 
     var first_object: u8 = 1;
@@ -317,6 +342,7 @@ test "one element bitmap is reused for a collection allocation" {
         .alignment = @alignOf(Element),
         .ptr_bytes = @sizeOf(Ref),
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
 
     var a: u8 = 10;
@@ -356,9 +382,10 @@ test "repeated elements use aligned starts without padding the descriptor size" 
         .alignment = alignment,
         .ptr_bytes = @sizeOf(usize),
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
     const stride = comptime std.mem.alignForward(usize, payload_size, alignment);
-    try std.testing.expectEqual(stride, try layout.elementStride());
+    try std.testing.expectEqual(stride, layout.elementStride());
 
     var a: u8 = 1;
     var b: u8 = 2;
@@ -391,6 +418,7 @@ test "rejects non-element-sized collection storage" {
         .alignment = @alignOf(usize),
         .ptr_bytes = @sizeOf(usize),
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
 
     var storage: [@sizeOf(usize) + 1]u8 align(@alignOf(usize)) = @splat(0);
@@ -415,6 +443,7 @@ test "rejects reference layout with insufficient alignment" {
         .alignment = 1,
         .ptr_bytes = POINTER_SIZE,
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
 
     try std.testing.expectError(
@@ -432,6 +461,7 @@ test "rejects misaligned payload base" {
         .alignment = REF_ALIGNMENT,
         .ptr_bytes = POINTER_SIZE,
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
     try layout.validate();
 
@@ -465,12 +495,13 @@ test "reference slots stay aligned across padded elements" {
         .alignment = element_alignment,
         .ptr_bytes = 2 * POINTER_SIZE,
         .gc_data = &bitmap,
+        .element_type = .reference,
     };
     try layout.validate();
 
     try std.testing.expectEqual(
         stride,
-        try layout.elementStride(),
+        layout.elementStride(),
     );
     try std.testing.expectEqual(
         @as(usize, 0),
@@ -506,4 +537,33 @@ test "reference slots stay aligned across padded elements" {
     try std.testing.expectEqual(@as(usize, 2), capture.count);
     try std.testing.expect(capture.values[0] == first_ref);
     try std.testing.expect(capture.values[1] == second_ref);
+}
+
+test "getAlignment produces a zig alignment" {
+    const descriptor = LayoutDescriptor{
+        .size = 10,
+        .alignment = 8,
+        .gc_data = null,
+        .ptr_bytes = 0,
+        .element_type = .reference,
+    };
+
+    try std.testing.expectEqual(std.mem.Alignment.@"8", descriptor.getAlignment());
+}
+
+test "rejects element stride that overflows usize" {
+    const max = std.math.maxInt(usize);
+
+    const layout = LayoutDescriptor{
+        .size = max - 7,
+        .alignment = 16,
+        .ptr_bytes = 0,
+        .gc_data = null,
+        .element_type = .scalar,
+    };
+
+    try std.testing.expectError(
+        error.SizeOverflow,
+        layout.validate(),
+    );
 }
