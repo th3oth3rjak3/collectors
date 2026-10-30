@@ -10,6 +10,8 @@ const LayoutDescriptor = @import("../common/layout.zig").LayoutDescriptor;
 pub const ObjectHeader = struct {
     /// The layout details for the payload object.
     descriptor: *const LayoutDescriptor,
+    /// The number of elements allocated.
+    quantity: usize,
     /// A mark bit to be used by the collector during
     /// root scanning to verify liveness.
     is_marked: bool = false,

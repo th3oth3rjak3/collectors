@@ -107,6 +107,7 @@ pub const Allocation = struct {
 
         object_header_alloc.* = ObjectHeader{
             .descriptor = descriptor,
+            .quantity = 1,
             .is_marked = false,
         };
 
@@ -169,6 +170,7 @@ pub const Allocation = struct {
 
         object_header_alloc.* = ObjectHeader{
             .descriptor = descriptor,
+            .quantity = quantity,
             .is_marked = false,
         };
 
